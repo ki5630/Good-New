@@ -64,7 +64,7 @@
                     <button id="addBtn" onclick="addMember()" class="bg-indigo-500 text-white px-4 py-2 rounded-r-lg hover:bg-indigo-600 transition">追加</button>
                 </div>
                 <ul id="memberList" class="space-y-2 max-h-64 overflow-y-auto pr-2">
-                    <!-- Members will appear here -->
+                    <!-- メンバーリストがここに表示されます -->
                 </ul>
                 <div class="mt-4 text-sm text-gray-500" id="memberCount">現在の人数: 0人</div>
             </div>
@@ -77,7 +77,7 @@
                     <h2 class="text-xl font-bold mb-4 flex items-center">
                         <span class="mr-2">💡</span> 本日のお題
                     </h2>
-                    <div id="topicDisplay" class="bg-indigo-50 p-6 rounded-xl text-center text-xl font-medium text-indigo-800 min-h-[100px] flex items-center justify-center border-2 border-dashed border-indigo-200">
+                    <div id="topicDisplay" class="bg-indigo-50 p-6 rounded-xl text-center text-xl font-medium text-indigo-800 min-h-[120px] flex items-center justify-center border-2 border-dashed border-indigo-200 px-4">
                         「お題を出す」ボタンを押してください
                     </div>
                     <button onclick="generateTopic()" class="w-full mt-4 bg-white border-2 border-indigo-500 text-indigo-500 font-bold py-3 rounded-xl hover:bg-indigo-50 transition flex items-center justify-center">
@@ -119,30 +119,24 @@
     </div>
 
     <script type="module">
-        // Firebase modules - only loaded if config exists
         let db = null;
         let auth = null;
         let membersRef = null;
         let isCloudMode = false;
 
-        // Configuration from environment
         const firebaseConfigRaw = typeof __firebase_config !== 'undefined' ? __firebase_config : null;
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'morning-meeting-app';
 
-        // State
         let members = [];
         let isSpinning = false;
 
-        // UI Elements
         const listEl = document.getElementById('memberList');
         const countDisplay = document.getElementById('memberCount');
         const statusEl = document.getElementById('status');
         const nameInput = document.getElementById('nameInput');
 
-        // Initial setup
         async function init() {
             if (firebaseConfigRaw) {
-                // Inside special environment - Use Firebase
                 try {
                     const { initializeApp } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js");
                     const { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js");
@@ -165,15 +159,17 @@
                             onSnapshot(membersRef, (snapshot) => {
                                 members = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
                                 renderMembers();
+                            }, (err) => {
+                                console.error("Firestore error:", err);
+                                useLocalStorage();
                             });
                         }
                     });
                 } catch (e) {
-                    console.warn("Firebase init failed, falling back to LocalStorage:", e);
+                    console.warn("Cloud setup failed, fallback to local:", e);
                     useLocalStorage();
                 }
             } else {
-                // Outside environment (GitHub, Local file) - Use LocalStorage
                 useLocalStorage();
             }
         }
@@ -193,14 +189,15 @@
             renderMembers();
         }
 
-        // Action: Add
         window.addMember = async () => {
             const name = nameInput.value.trim();
             if (!name) return;
 
             if (isCloudMode && membersRef) {
-                const { addDoc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
-                await addDoc(membersRef, { name, timestamp: Date.now() });
+                try {
+                    const { addDoc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+                    await addDoc(membersRef, { name, timestamp: Date.now() });
+                } catch (e) { console.error(e); }
             } else {
                 members.push({ id: Date.now().toString(), name });
                 saveLocal();
@@ -209,12 +206,13 @@
             nameInput.value = '';
         };
 
-        // Action: Remove
         window.removeMember = async (id) => {
             if (isCloudMode && db) {
-                const { doc, deleteDoc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
-                const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'members', id);
-                await deleteDoc(docRef);
+                try {
+                    const { doc, deleteDoc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+                    const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'members', id);
+                    await deleteDoc(docRef);
+                } catch (e) { console.error(e); }
             } else {
                 members = members.filter(m => m.id !== id);
                 saveLocal();
@@ -223,7 +221,9 @@
         };
 
         function saveLocal() {
-            localStorage.setItem('gn_members', JSON.stringify(members));
+            if (!isCloudMode) {
+                localStorage.setItem('gn_members', JSON.stringify(members));
+            }
         }
 
         function renderMembers() {
@@ -241,15 +241,47 @@
             document.getElementById('errorMsg').classList.toggle('hidden', members.length >= 2);
         }
 
-        // Topics Logic
+        // 大量のお題リスト (全60個)
         const topics = [
-            "最近食べた美味しいものについて 🍱", "最近知った豆知識や新しい発見 💡",
-            "最近仕事で嬉しかった小さなこと ✨", "おすすめの気分転換の方法 🚶",
-            "最近買って良かった便利なもの 🛒", "誰かに感謝したいエピソード 🙏",
-            "最近見た映画や読んだ本の感想 📚", "週末に予定している楽しみなこと 🗓️",
-            "最近のマイブーム 🐈", "自分を褒めてあげたいこと 🏆",
-            "今日という日のちょっとした目標 🎯", "最近笑ったおもしろい出来事 😂",
-            "季節の移り変わりを感じた瞬間 🌸", "人から言われて嬉しかった言葉 💬"
+            // 日常・ライフスタイル
+            "最近食べた最高に美味しいもの 🍱", "最近知った驚きの豆知識 💡",
+            "最近仕事で嬉しかった小さな成功 ✨", "おすすめの気分転換・リフレッシュ法 🚶",
+            "最近買ってQOLが上がったもの 🛒", "誰かに感謝したい、心温まるエピソード 🙏",
+            "最近見た映画や読んだ本の熱い感想 📚", "今週末に予定しているワクワクすること 🗓️",
+            "最近ハマっている意外なマイブーム 🐈", "昨日、自分を褒めてあげたいと思ったこと 🏆",
+            "今日という日の、小さな自分への目標 🎯", "最近、お腹を抱えて笑ったこと 😂",
+            "季節の移り変わりを感じた瞬間 🌸", "最近言われて嬉しかった言葉 💬",
+            "最近のスマホのお気に入りアプリ 📱", "最近、自分を甘やかすためにしたこと 🍰",
+            
+            // 仕事・こだわり
+            "仕事中にテンションを上げる魔法のアイテム 🎧", "最近発見した仕事の効率化テクニック ⌨️",
+            "自分の仕事デスク、ここがこだわり 🖥️", "チームの誰かに『さすが！』と思った瞬間 👀",
+            "今、密かに挑戦してみたいスキル 🛠️", "仕事が一段落した時の理想のご褒美 🍺",
+            "最近届いて嬉しかったチャットやメール 💌", "今の仕事の好きなところを1つ 💖",
+            
+            // 実は…・もしもシリーズ
+            "実は、まだチームの誰も知らない自分の特技 🎸", "もし1ヶ月自由なら、どこで何をして過ごす？ ✈️",
+            "子供の頃の将来の夢はなんだった？ 🚀", "1つだけ魔法が使えるなら何を叶える？ ✨",
+            "自分を動物に例えるなら何だと思う？ 🦁", "タイムマシンがあったら過去と未来どっちに行きたい？ 🕰️",
+            "一生これしか食べられないなら、何を選ぶ？ 🍕", "自分の人生が映画化されたら、主役は誰がいい？ 🎬",
+            
+            // ちょっと深い・ユニーク
+            "最近、自分の中で『これって大人だな』と思った瞬間 🍷", "最近の自分、何点満点中何点？ 💯",
+            "最近の自分のラッキーニュース 🍀", "新しくオープンして気になっているお店 🏪",
+            "最近、勇気を出してやってみたこと 🦁", "無意識にやってしまう不思議なクセ 🌀",
+            "世界で一番落ち着く場所はどこ？ 🏠", "最近感じたジェネレーションギャップ 👴",
+            
+            // 季節・その他
+            "昨日の晩ごはん、自慢のポイントは？ 🍛", "最近の『ちょっといいな』と思った風景 📸",
+            "もし宝くじで100万円当たったらどう使う？ 💰", "おすすめの睡眠グッズや快眠法 🛌",
+            "自分史上、最高の休日の過ごし方 🏖️", "最近、心に残った名言や歌詞 🎵",
+            "朝起きて一番にすることは？ ☀️", "次に旅行に行くならどこがいい？ 🗺️",
+            "実は苦手だけど、克服したいこと 🥦", "学生時代の部活のエピソードを1つ 🏀",
+            "最近、新しく覚えた言葉 📖", "自分へのご褒美、いくらまでなら許せる？ 💸",
+            "最近のコンビニスイーツでおすすめは？ 🍦", "人生で一番スリルがあった瞬間 🎢",
+            "最近、解決した長年の悩み 🧩", "もし明日から1週間、ネット禁止なら何する？ 📵",
+            "自分の中の『小さな贅沢』といえば？ 💎", "最近、街で見かけた面白い人・もの 🕺",
+            "これから習慣にしたいと思っていること 🧘", "最近の体調、一番いいところはどこ？ 💪"
         ];
 
         window.generateTopic = () => {
@@ -261,7 +293,6 @@
             display.classList.add('fade-in');
         };
 
-        // Roulette Logic
         window.startRoulette = async () => {
             if (isSpinning || members.length < 2) return;
 
