@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Good & New 朝会ルーレット</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;700&display=swap');
+        
+        body {
+            font-family: 'M PLUS Rounded+ 1c', sans-serif;
+            background: linear-gradient(135deg, #fdfbfb 0%, #ebedee 100%);
+            min-height: 100vh;
+        }
+
+        .roulette-active {
+            animation: pulse 0.2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); background-color: #f3f4f6; }
+            50% { transform: scale(1.05); background-color: #fbbf24; color: white; }
+            100% { transform: scale(1); background-color: #f3f4f6; }
+        }
+
+        .celebrate {
+            animation: bounce 0.5s ease infinite alternate;
+        }
+
+        @keyframes bounce {
+            from { transform: translateY(0); }
+            to { transform: translateY(-10px); }
+        }
+
+        .fade-in {
+            animation: fadeIn 0.5s ease-out forwards;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+    <div class="max-w-4xl mx-auto">
+        <!-- Header -->
+        <header class="text-center mb-8">
+            <h1 class="text-3xl md:text-4xl font-bold text-indigo-600 mb-2">☀️ Good & New 朝会</h1>
+            <p class="text-gray-600">24時間以内にあった「良かったこと」や「新しい発見」をシェアしましょう！</p>
+            <div id="status" class="inline-block mt-2 px-3 py-1 bg-gray-200 text-gray-600 text-xs rounded-full">接続中...</div>
+        </header>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+            
+            <!-- Left Column: Member Management -->
+            <div class="bg-white p-6 rounded-2xl shadow-lg border border-gray-100">
+                <h2 class="text-xl font-bold mb-4 flex items-center">
+                    <span class="mr-2">👥</span> メンバー
+                </h2>
+                <div class="flex mb-4">
+                    <input type="text" id="nameInput" placeholder="名前を入力..." class="flex-1 px-3 py-2 border rounded-l-lg focus:outline-none focus:ring-2 focus:ring-indigo-400">
+                    <button id="addBtn" onclick="addMember()" class="bg-indigo-500 text-white px-4 py-2 rounded-r-lg hover:bg-indigo-600 transition disabled:opacity-50" disabled>追加</button>
+                </div>
+                <ul id="memberList" class="space-y-2 max-h-64 overflow-y-auto pr-2">
+                    <!-- Loading skeleton -->
+                    <li class="bg-gray-100 h-10 animate-pulse rounded-lg"></li>
+                    <li class="bg-gray-100 h-10 animate-pulse rounded-lg"></li>
+                </ul>
+                <div class="mt-4 text-sm text-gray-500" id="memberCount">現在の人数: 0人</div>
+            </div>
+
+            <!-- Middle & Right Columns: Main Action Area -->
+            <div class="md:col-span-2 space-y-6">
+                
+                <!-- Topic Section -->
+                <div class="bg-white p-6 rounded-2xl shadow-lg border border-gray-100">
+                    <h2 class="text-xl font-bold mb-4 flex items-center">
+                        <span class="mr-2">💡</span> 本日のお題
+                    </h2>
+                    <div id="topicDisplay" class="bg-indigo-50 p-6 rounded-xl text-center text-xl font-medium text-indigo-800 min-h-[100px] flex items-center justify-center border-2 border-dashed border-indigo-200">
+                        「お題を出す」ボタンを押してください
+                    </div>
+                    <button onclick="generateTopic()" class="w-full mt-4 bg-white border-2 border-indigo-500 text-indigo-500 font-bold py-3 rounded-xl hover:bg-indigo-50 transition flex items-center justify-center">
+                        🎲 お題を出す
+                    </button>
+                </div>
+
+                <!-- Roulette Section -->
+                <div class="bg-white p-6 rounded-2xl shadow-lg border border-gray-100">
+                    <h2 class="text-xl font-bold mb-4 flex items-center">
+                        <span class="mr-2">🎯</span> スピーカー決定 (2名)
+                    </h2>
+                    
+                    <div id="selectionArea" class="grid grid-cols-2 gap-4 mb-6">
+                        <div id="speaker1" class="bg-gray-100 p-8 rounded-xl text-center flex flex-col items-center justify-center min-h-[140px]">
+                            <span class="text-gray-400 text-sm mb-2">Speaker 1</span>
+                            <div class="speaker-name text-2xl font-bold">???</div>
+                        </div>
+                        <div id="speaker2" class="bg-gray-100 p-8 rounded-xl text-center flex flex-col items-center justify-center min-h-[140px]">
+                            <span class="text-gray-400 text-sm mb-2">Speaker 2</span>
+                            <div class="speaker-name text-2xl font-bold">???</div>
+                        </div>
+                    </div>
+
+                    <button id="spinBtn" onclick="startRoulette()" class="w-full bg-indigo-600 text-white font-bold py-4 rounded-xl text-xl shadow-lg hover:bg-indigo-700 transition transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed">
+                        🎡 ルーレットを回す！
+                    </button>
+                    
+                    <p id="errorMsg" class="text-red-500 text-center mt-3 hidden text-sm">※2人以上のメンバーを追加してください</p>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- Instructions -->
+        <footer class="mt-12 text-center text-gray-500 text-sm">
+            <p>Good & New: 24時間以内にあった「良かったこと」や「新しい発見」を、拍手とともに共有するワークショップです。</p>
+        </footer>
+    </div>
+
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, collection, onSnapshot, addDoc, deleteDoc, query } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Global State
+        let members = [];
+        let user = null;
+        let isSpinning = false;
+        
+        // Environment Variables (provided by system)
+        const firebaseConfig = JSON.parse(__firebase_config);
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'morning-meeting-app';
+        
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        // UI Elements
+        const listEl = document.getElementById('memberList');
+        const countDisplay = document.getElementById('memberCount');
+        const addBtn = document.getElementById('addBtn');
+        const statusEl = document.getElementById('status');
+        const nameInput = document.getElementById('nameInput');
+
+        // Auth Logic
+        const initAuth = async () => {
+            try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            } catch (error) {
+                console.error("Auth failed:", error);
+                statusEl.innerText = "認証エラー";
+            }
+        };
+
+        onAuthStateChanged(auth, (u) => {
+            user = u;
+            if (user) {
+                statusEl.innerText = "クラウド同期中 🟢";
+                addBtn.disabled = false;
+                setupFirestore();
+            }
+        });
+
+        initAuth();
+
+        // Firestore Logic
+        function setupFirestore() {
+            if (!user) return;
+            
+            // Public path for team sharing
+            const membersRef = collection(db, 'artifacts', appId, 'public', 'data', 'members');
+            
+            // Listen for changes
+            onSnapshot(membersRef, (snapshot) => {
+                members = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                renderMembers();
+            }, (error) => {
+                console.error("Fetch failed:", error);
+                statusEl.innerText = "同期エラー";
+            });
+        }
+
+        async function addMember() {
+            const name = nameInput.value.trim();
+            if (name && user) {
+                const membersRef = collection(db, 'artifacts', appId, 'public', 'data', 'members');
+                try {
+                    await addDoc(membersRef, { name, timestamp: Date.now() });
+                    nameInput.value = '';
+                } catch (e) {
+                    console.error("Add failed:", e);
+                }
+            }
+        }
+
+        async function removeMember(docId) {
+            if (!user) return;
+            const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'members', docId);
+            try {
+                await deleteDoc(docRef);
+            } catch (e) {
+                console.error("Delete failed:", e);
+            }
+        }
+
+        // Global functions for HTML access
+        window.addMember = addMember;
+        window.removeMember = removeMember;
+
+        // Render Members
+        function renderMembers() {
+            listEl.innerHTML = '';
+            
+            members.forEach((member) => {
+                const li = document.createElement('li');
+                li.className = 'flex justify-between items-center bg-gray-50 p-2 rounded-lg fade-in';
+                li.innerHTML = `
+                    <span class="font-medium">${member.name}</span>
+                    <button onclick="removeMember('${member.id}')" class="text-gray-400 hover:text-red-500 transition">✕</button>
+                `;
+                listEl.appendChild(li);
+            });
+
+            countDisplay.innerText = `現在の人数: ${members.length}人`;
+            
+            const errorMsg = document.getElementById('errorMsg');
+            if (members.length >= 2) {
+                errorMsg.classList.add('hidden');
+            }
+        }
+
+        // Topics Data
+        const topics = [
+            "最近食べた美味しいものについて 🍱", "最近知った豆知識や新しい発見 💡",
+            "最近仕事で嬉しかった小さなこと ✨", "おすすめの気分転換の方法 🚶",
+            "最近買って良かった便利なもの 🛒", "誰かに感謝したいエピソード 🙏",
+            "最近見た映画や読んだ本の感想 📚", "週末に予定している楽しみなこと 🗓️",
+            "最近のマイブーム 🐈", "自分を褒めてあげたいこと 🏆",
+            "今日という日のちょっとした目標 🎯", "最近笑ったおもしろい出来事 😂",
+            "季節の移り変わりを感じた瞬間 🌸", "人から言われて嬉しかった言葉 💬"
+        ];
+
+        window.generateTopic = () => {
+            const display = document.getElementById('topicDisplay');
+            display.classList.remove('fade-in');
+            void display.offsetWidth;
+            const randomTopic = topics[Math.floor(Math.random() * topics.length)];
+            display.innerText = randomTopic;
+            display.classList.add('fade-in');
+        };
+
+        window.startRoulette = async () => {
+            if (isSpinning || members.length < 2) {
+                if (members.length < 2) document.getElementById('errorMsg').classList.remove('hidden');
+                return;
+            }
+
+            isSpinning = true;
+            const spinBtn = document.getElementById('spinBtn');
+            const speaker1El = document.getElementById('speaker1');
+            const speaker2El = document.getElementById('speaker2');
+            const name1El = speaker1El.querySelector('.speaker-name');
+            const name2El = speaker2El.querySelector('.speaker-name');
+
+            spinBtn.disabled = true;
+            speaker1El.classList.add('roulette-active');
+            speaker2El.classList.add('roulette-active');
+            speaker1El.classList.remove('bg-indigo-500', 'text-white', 'celebrate');
+            speaker2El.classList.remove('bg-indigo-500', 'text-white', 'celebrate');
+
+            let duration = 2000; 
+            let interval = 50;
+            let elapsed = 0;
+
+            const timer = setInterval(() => {
+                elapsed += interval;
+                const tempIdx1 = Math.floor(Math.random() * members.length);
+                let tempIdx2 = Math.floor(Math.random() * members.length);
+                while(tempIdx2 === tempIdx1 && members.length > 1) {
+                    tempIdx2 = Math.floor(Math.random() * members.length);
+                }
+                name1El.innerText = members[tempIdx1].name;
+                name2El.innerText = members[tempIdx2].name;
+
+                if (elapsed >= duration) {
+                    clearInterval(timer);
+                    const shuffled = [...members].sort(() => 0.5 - Math.random());
+                    name1El.innerText = shuffled[0].name;
+                    name2El.innerText = shuffled[1].name;
+                    speaker1El.classList.remove('roulette-active');
+                    speaker2El.classList.remove('roulette-active');
+                    speaker1El.classList.add('bg-indigo-500', 'text-white', 'celebrate');
+                    speaker2El.classList.add('bg-indigo-500', 'text-white', 'celebrate');
+                    spinBtn.disabled = false;
+                    isSpinning = false;
+                }
+            }, interval);
+        };
+
+        nameInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') addMember();
+        });
+    </script>
+</body>
+</html>
