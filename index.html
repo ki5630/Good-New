@@ -49,7 +49,7 @@
         <header class="text-center mb-8">
             <h1 class="text-3xl md:text-4xl font-bold text-indigo-600 mb-2">☀️ Good & New 朝会</h1>
             <p class="text-gray-600">24時間以内にあった「良かったこと」や「新しい発見」をシェアしましょう！</p>
-            <div id="status" class="inline-block mt-2 px-3 py-1 bg-gray-200 text-gray-600 text-xs rounded-full">接続中...</div>
+            <div id="status" class="inline-block mt-2 px-3 py-1 bg-green-100 text-green-700 text-xs rounded-full">準備完了</div>
         </header>
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
@@ -61,12 +61,10 @@
                 </h2>
                 <div class="flex mb-4">
                     <input type="text" id="nameInput" placeholder="名前を入力..." class="flex-1 px-3 py-2 border rounded-l-lg focus:outline-none focus:ring-2 focus:ring-indigo-400">
-                    <button id="addBtn" onclick="addMember()" class="bg-indigo-500 text-white px-4 py-2 rounded-r-lg hover:bg-indigo-600 transition disabled:opacity-50" disabled>追加</button>
+                    <button id="addBtn" onclick="addMember()" class="bg-indigo-500 text-white px-4 py-2 rounded-r-lg hover:bg-indigo-600 transition">追加</button>
                 </div>
                 <ul id="memberList" class="space-y-2 max-h-64 overflow-y-auto pr-2">
-                    <!-- Loading skeleton -->
-                    <li class="bg-gray-100 h-10 animate-pulse rounded-lg"></li>
-                    <li class="bg-gray-100 h-10 animate-pulse rounded-lg"></li>
+                    <!-- Members will appear here -->
                 </ul>
                 <div class="mt-4 text-sm text-gray-500" id="memberCount">現在の人数: 0人</div>
             </div>
@@ -120,105 +118,116 @@
         </footer>
     </div>
 
-    <!-- Firebase SDKs -->
     <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, collection, onSnapshot, addDoc, deleteDoc, query } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        // Firebase modules - only loaded if config exists
+        let db = null;
+        let auth = null;
+        let membersRef = null;
+        let isCloudMode = false;
 
-        // Global State
-        let members = [];
-        let user = null;
-        let isSpinning = false;
-        
-        // Environment Variables (provided by system)
-        const firebaseConfig = JSON.parse(__firebase_config);
+        // Configuration from environment
+        const firebaseConfigRaw = typeof __firebase_config !== 'undefined' ? __firebase_config : null;
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'morning-meeting-app';
-        
-        const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        const db = getFirestore(app);
+
+        // State
+        let members = [];
+        let isSpinning = false;
 
         // UI Elements
         const listEl = document.getElementById('memberList');
         const countDisplay = document.getElementById('memberCount');
-        const addBtn = document.getElementById('addBtn');
         const statusEl = document.getElementById('status');
         const nameInput = document.getElementById('nameInput');
 
-        // Auth Logic
-        const initAuth = async () => {
-            try {
-                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                    await signInWithCustomToken(auth, __initial_auth_token);
-                } else {
-                    await signInAnonymously(auth);
+        // Initial setup
+        async function init() {
+            if (firebaseConfigRaw) {
+                // Inside special environment - Use Firebase
+                try {
+                    const { initializeApp } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js");
+                    const { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js");
+                    const { getFirestore, collection, onSnapshot, addDoc, deleteDoc, doc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+
+                    const config = JSON.parse(firebaseConfigRaw);
+                    const app = initializeApp(config);
+                    auth = getAuth(app);
+                    db = getFirestore(app);
+                    isCloudMode = true;
+
+                    const token = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+                    if (token) await signInWithCustomToken(auth, token);
+                    else await signInAnonymously(auth);
+
+                    onAuthStateChanged(auth, (user) => {
+                        if (user) {
+                            statusEl.innerText = "クラウド同期中 🟢";
+                            membersRef = collection(db, 'artifacts', appId, 'public', 'data', 'members');
+                            onSnapshot(membersRef, (snapshot) => {
+                                members = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+                                renderMembers();
+                            });
+                        }
+                    });
+                } catch (e) {
+                    console.warn("Firebase init failed, falling back to LocalStorage:", e);
+                    useLocalStorage();
                 }
-            } catch (error) {
-                console.error("Auth failed:", error);
-                statusEl.innerText = "認証エラー";
+            } else {
+                // Outside environment (GitHub, Local file) - Use LocalStorage
+                useLocalStorage();
+            }
+        }
+
+        function useLocalStorage() {
+            isCloudMode = false;
+            statusEl.innerText = "ローカル保存モード 💾";
+            const saved = localStorage.getItem('gn_members');
+            if (saved) {
+                members = JSON.parse(saved);
+            } else {
+                members = [
+                    { id: '1', name: '佐藤' },
+                    { id: '2', name: '鈴木' }
+                ];
+            }
+            renderMembers();
+        }
+
+        // Action: Add
+        window.addMember = async () => {
+            const name = nameInput.value.trim();
+            if (!name) return;
+
+            if (isCloudMode && membersRef) {
+                const { addDoc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+                await addDoc(membersRef, { name, timestamp: Date.now() });
+            } else {
+                members.push({ id: Date.now().toString(), name });
+                saveLocal();
+                renderMembers();
+            }
+            nameInput.value = '';
+        };
+
+        // Action: Remove
+        window.removeMember = async (id) => {
+            if (isCloudMode && db) {
+                const { doc, deleteDoc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+                const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'members', id);
+                await deleteDoc(docRef);
+            } else {
+                members = members.filter(m => m.id !== id);
+                saveLocal();
+                renderMembers();
             }
         };
 
-        onAuthStateChanged(auth, (u) => {
-            user = u;
-            if (user) {
-                statusEl.innerText = "クラウド同期中 🟢";
-                addBtn.disabled = false;
-                setupFirestore();
-            }
-        });
-
-        initAuth();
-
-        // Firestore Logic
-        function setupFirestore() {
-            if (!user) return;
-            
-            // Public path for team sharing
-            const membersRef = collection(db, 'artifacts', appId, 'public', 'data', 'members');
-            
-            // Listen for changes
-            onSnapshot(membersRef, (snapshot) => {
-                members = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                renderMembers();
-            }, (error) => {
-                console.error("Fetch failed:", error);
-                statusEl.innerText = "同期エラー";
-            });
+        function saveLocal() {
+            localStorage.setItem('gn_members', JSON.stringify(members));
         }
 
-        async function addMember() {
-            const name = nameInput.value.trim();
-            if (name && user) {
-                const membersRef = collection(db, 'artifacts', appId, 'public', 'data', 'members');
-                try {
-                    await addDoc(membersRef, { name, timestamp: Date.now() });
-                    nameInput.value = '';
-                } catch (e) {
-                    console.error("Add failed:", e);
-                }
-            }
-        }
-
-        async function removeMember(docId) {
-            if (!user) return;
-            const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'members', docId);
-            try {
-                await deleteDoc(docRef);
-            } catch (e) {
-                console.error("Delete failed:", e);
-            }
-        }
-
-        // Global functions for HTML access
-        window.addMember = addMember;
-        window.removeMember = removeMember;
-
-        // Render Members
         function renderMembers() {
             listEl.innerHTML = '';
-            
             members.forEach((member) => {
                 const li = document.createElement('li');
                 li.className = 'flex justify-between items-center bg-gray-50 p-2 rounded-lg fade-in';
@@ -228,16 +237,11 @@
                 `;
                 listEl.appendChild(li);
             });
-
             countDisplay.innerText = `現在の人数: ${members.length}人`;
-            
-            const errorMsg = document.getElementById('errorMsg');
-            if (members.length >= 2) {
-                errorMsg.classList.add('hidden');
-            }
+            document.getElementById('errorMsg').classList.toggle('hidden', members.length >= 2);
         }
 
-        // Topics Data
+        // Topics Logic
         const topics = [
             "最近食べた美味しいものについて 🍱", "最近知った豆知識や新しい発見 💡",
             "最近仕事で嬉しかった小さなこと ✨", "おすすめの気分転換の方法 🚶",
@@ -257,11 +261,9 @@
             display.classList.add('fade-in');
         };
 
+        // Roulette Logic
         window.startRoulette = async () => {
-            if (isSpinning || members.length < 2) {
-                if (members.length < 2) document.getElementById('errorMsg').classList.remove('hidden');
-                return;
-            }
+            if (isSpinning || members.length < 2) return;
 
             isSpinning = true;
             const spinBtn = document.getElementById('spinBtn');
@@ -306,8 +308,10 @@
         };
 
         nameInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') addMember();
+            if (e.key === 'Enter') window.addMember();
         });
+
+        init();
     </script>
 </body>
 </html>
