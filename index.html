@@ -15,13 +15,13 @@
         }
 
         .roulette-active {
-            animation: pulse 0.2s infinite;
+            animation: pulse 0.15s infinite;
         }
 
         @keyframes pulse {
-            0% { transform: scale(1); background-color: #f3f4f6; }
-            50% { transform: scale(1.05); background-color: #fbbf24; color: white; }
-            100% { transform: scale(1); background-color: #f3f4f6; }
+            0% { transform: scale(1); opacity: 0.8; }
+            50% { transform: scale(1.02); opacity: 1; background-color: #eef2ff; }
+            100% { transform: scale(1); opacity: 0.8; }
         }
 
         .celebrate {
@@ -34,12 +34,18 @@
         }
 
         .fade-in {
-            animation: fadeIn 0.5s ease-out forwards;
+            animation: fadeIn 0.4s ease-out forwards;
         }
 
         @keyframes fadeIn {
             from { opacity: 0; transform: translateY(10px); }
             to { opacity: 1; transform: translateY(0); }
+        }
+
+        .topic-result-card {
+            background: white;
+            border: 2px solid #e0e7ff;
+            transition: all 0.3s ease;
         }
     </style>
 </head>
@@ -77,15 +83,27 @@
                     <h2 class="text-xl font-bold mb-4 flex items-center">
                         <span class="mr-2">💡</span> 本日のお題
                     </h2>
-                    <div id="topicDisplay" class="bg-indigo-50 p-6 rounded-xl text-center text-xl font-medium text-indigo-800 min-h-[120px] flex items-center justify-center border-2 border-dashed border-indigo-200 px-4">
-                        「お題を出す」ボタンを押してください
+                    <div id="topicDisplay" class="bg-indigo-50 p-6 rounded-xl text-center min-h-[200px] flex flex-col items-center justify-center border-2 border-dashed border-indigo-200 px-4">
+                        <span id="topicInstruction" class="text-indigo-800 text-lg font-medium">「お題を出す」ボタンを押してください</span>
+                        
+                        <!-- Spinning slots display -->
+                        <div id="topicRouletteArea" class="hidden grid grid-cols-1 gap-3 w-full mt-2">
+                            <div class="topic-slot bg-white p-3 rounded-lg border border-indigo-100 text-indigo-400 text-sm italic">...</div>
+                            <div class="topic-slot bg-white p-3 rounded-lg border border-indigo-100 text-indigo-400 text-sm italic">...</div>
+                            <div class="topic-slot bg-white p-3 rounded-lg border border-indigo-100 text-indigo-400 text-sm italic">...</div>
+                        </div>
+
+                        <!-- Results List (Static) -->
+                        <div id="topicResults" class="grid grid-cols-1 gap-3 w-full mt-4 hidden">
+                            <!-- Static topic results will be generated here -->
+                        </div>
                     </div>
-                    <button onclick="generateTopic()" class="w-full mt-4 bg-white border-2 border-indigo-500 text-indigo-500 font-bold py-3 rounded-xl hover:bg-indigo-50 transition flex items-center justify-center">
-                        🎲 お題を出す
+                    <button id="topicBtn" onclick="generateTopic()" class="w-full mt-4 bg-white border-2 border-indigo-500 text-indigo-500 font-bold py-3 rounded-xl hover:bg-indigo-50 transition flex items-center justify-center shadow-sm active:scale-95">
+                        🎲 お題スロットを回す！
                     </button>
                 </div>
 
-                <!-- Roulette Section -->
+                <!-- Speaker Section -->
                 <div class="bg-white p-6 rounded-2xl shadow-lg border border-gray-100">
                     <h2 class="text-xl font-bold mb-4 flex items-center">
                         <span class="mr-2">🎯</span> スピーカー決定 (2名)
@@ -129,6 +147,7 @@
 
         let members = [];
         let isSpinning = false;
+        let isTopicSpinning = false;
 
         const listEl = document.getElementById('memberList');
         const countDisplay = document.getElementById('memberCount');
@@ -181,14 +200,10 @@
             if (saved) {
                 members = JSON.parse(saved);
             } else {
-                // デフォルトメンバーの設定
                 members = [
-                    { id: '1', name: 'なおさん' },
-                    { id: '2', name: 'さきちゃん' },
-                    { id: '3', name: 'るんくん' },
-                    { id: '4', name: 'ありちゃん' },
-                    { id: '5', name: 'しーちゃん' },
-                    { id: '6', name: 'たけちゃん' },
+                    { id: '1', name: 'なおさん' }, { id: '2', name: 'さきちゃん' },
+                    { id: '3', name: 'るんくん' }, { id: '4', name: 'ありちゃん' },
+                    { id: '5', name: 'しーちゃん' }, { id: '6', name: 'たけちゃん' },
                     { id: '7', name: 'すぎむー' }
                 ];
                 saveLocal();
@@ -199,12 +214,9 @@
         window.addMember = async () => {
             const name = nameInput.value.trim();
             if (!name) return;
-
             if (isCloudMode && membersRef) {
-                try {
-                    const { addDoc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
-                    await addDoc(membersRef, { name, timestamp: Date.now() });
-                } catch (e) { console.error(e); }
+                const { addDoc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+                await addDoc(membersRef, { name, timestamp: Date.now() });
             } else {
                 members.push({ id: Date.now().toString(), name });
                 saveLocal();
@@ -215,11 +227,9 @@
 
         window.removeMember = async (id) => {
             if (isCloudMode && db) {
-                try {
-                    const { doc, deleteDoc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
-                    const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'members', id);
-                    await deleteDoc(docRef);
-                } catch (e) { console.error(e); }
+                const { doc, deleteDoc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+                const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'members', id);
+                await deleteDoc(docRef);
             } else {
                 members = members.filter(m => m.id !== id);
                 saveLocal();
@@ -228,9 +238,7 @@
         };
 
         function saveLocal() {
-            if (!isCloudMode) {
-                localStorage.setItem('gn_members', JSON.stringify(members));
-            }
+            if (!isCloudMode) localStorage.setItem('gn_members', JSON.stringify(members));
         }
 
         function renderMembers() {
@@ -248,71 +256,103 @@
             document.getElementById('errorMsg').classList.toggle('hidden', members.length >= 2);
         }
 
-        // 新しいユニークなお題リスト (全50個)
         const topics = [
-            "昨日の夜、寝る前にふと考えた幸せなこと 🌙",
-            "最近、誰かに「ありがとう」と言われたエピソード 🙏",
-            "今の気分を「天気」で例えると何？ ☀️🌧️🌀",
-            "最近見つけた、街の中の小さな素敵な景色 📸",
-            "コンビニで見つけて思わず買ってしまったもの 🏪",
-            "最近、自分のささやかな成長を感じた瞬間 🌱",
-            "忙しい時に自分を癒してくれるお助けアイテム 🧘",
-            "もし1日だけ別の職業になれるなら、何になりたい？ 🚀",
-            "最近、一口飲んで「美味しい！」と思った飲み物 ☕",
-            "自分の名前の由来や、気に入っているところ 📛",
-            "最近、少し勇気を出して初めてやってみたこと 🦁",
-            "ずっと大切にしている自分だけの習慣や宝物 ✨",
-            "最近、心が動かされたニュースや出来事 📰",
-            "「これさえあれば頑張れる」という自分のスイッチ 🔘",
-            "もし無人島に一つだけ持っていくなら何？ 🏝️",
-            "最近、一番「スッキリした」出来事 🧼",
-            "自分が思う、今の自分の一番のチャームポイント 😊",
-            "もしペットを飼うなら、どんな動物と暮らしたい？ 🐕",
-            "最近、人から勧められて試してみたこと 💡",
-            "子供の頃の自分が今の自分を見たら、なんて言うと思う？ 👦",
-            "自分にとって理想の「朝の過ごし方」は？ 🥞",
-            "最近、思わず「おっ」と驚いた発見 😲",
-            "自分の部屋の中で一番お気に入りの場所 🏠",
-            "最近、一番時間を忘れて没頭したこと ⌛",
-            "魔法が一つだけ使えるなら、どんな魔法がいい？ 🪄",
-            "最近、人知れず頑張った自分への「お疲れ様」 🏆",
-            "これから1年以内に叶えたい、ささやかな夢 🎈",
-            "最近、自分の中で密かにブームになっている言葉 🗣️",
-            "誰にも言っていない、自分だけの小さなこだわり 🔍",
-            "もし透明人間になれたら、まずどこへ行く？ 👻",
-            "最近買った服や小物の、お気に入りポイントは？ 👗",
-            "自分が思う、一番心が落ち着く「音」は？ 🌊",
-            "最近、誰かのためにした「小さな良いこと」 🤝",
-            "人生で一度は行ってみたい、憧れの場所 🗺️",
-            "最近スマホで撮った、一番お気に入りの写真 📱",
-            "もし自分が歴史上の人物になれるなら誰？ ⚔️",
-            "最近、自分を笑顔にしてくれた誰かの行動 😄",
-            "今の仕事道具の中で、一番愛着があるもの 💻",
-            "もし明日から1週間の休みをもらえたら、何をする？ ✈️",
-            "最近、一番「頑張ってよかった」と思ったこと 💮",
-            "自分が思う、今のチームの「好きなところ」 🤝",
-            "最近、気になっている新しい趣味や習い事 🎨",
-            "もし空を飛べたら、一番最初に見たい景色はどこ？ 🕊️",
-            "自分が一番元気になれる「最強の食べ物」は？ 🍖",
-            "最近、解決した小さな悩み事や困り事 🧩",
-            "10年後の自分へ、今の自分からメッセージを送るなら？ ✉️",
-            "最近、一番感動した映画や動画のワンシーン 🎬",
-            "今日、この朝会が終わった後の楽しみな予定は？ 🍰"
+            "昨日の夜、寝る前にふと考えた幸せなこと 🌙", "最近、誰かに「ありがとう」と言われたエピソード 🙏",
+            "今の気分を「天気」で例えると何？ ☀️🌧️🌀", "最近見つけた、街の中の小さな素敵な景色 📸",
+            "コンビニで見つけて思わず買ってしまったもの 🏪", "最近、自分のささやかな成長を感じた瞬間 🌱",
+            "忙しい時に自分を癒してくれるお助けアイテム 🧘", "もし1日だけ別の職業になれるなら、何になりたい？ 🚀",
+            "最近、一口飲んで「美味しい！」と思った飲み物 ☕", "自分の名前の由来や、気に入っているところ 📛",
+            "最近、少し勇気を出して初めてやってみたこと 🦁", "ずっと大切にしている自分だけの習慣や宝物 ✨",
+            "最近、心が動かされたニュースや出来事 📰", "「これさえあれば頑張れる」という自分のスイッチ 🔘",
+            "もし無人島に一つだけ持っていくなら何？ 🏝️", "最近、一番「スッキリした」出来事 🧼",
+            "自分が思う、今の自分の一番のチャームポイント 😊", "もしペットを飼うなら、どんな動物と暮らしたい？ 🐕",
+            "最近、人から勧められて試してみたこと 💡", "子供の頃の自分が今の自分を見たら、なんて言うと思う？ 👦",
+            "自分にとって理想の「朝の過ごし方」は？ 🥞", "最近、思わず「おっ」と驚いた発見 😲",
+            "自分の部屋の中で一番お気に入りの場所 🏠", "最近、一番時間を忘れて没頭したこと ⌛",
+            "魔法が一つだけ使えるなら、どんな魔法がいい？ 🪄", "最近、人知れず頑張った自分への「お疲れ様」 🏆",
+            "これから1年以内に叶えたい、ささやかな夢 🎈", "最近、自分の中で密かにブームになっている言葉 🗣️",
+            "誰にも言っていない、自分だけの小さなこだわり 🔍", "もし透明人間になれたら、まずどこへ行く？ 👻",
+            "最近買った服や小物の、お気に入りポイントは？ 👗", "自分が思う、一番心が落ち着く「音」は？ 🌊",
+            "最近、誰かのためにした「小さな良いこと」 🤝", "人生で一度は行ってみたい、憧れの場所 🗺️",
+            "最近スマホで撮った、一番お気に入りの写真 📱", "もし自分が歴史上の人物になれるなら誰？ ⚔️",
+            "最近、自分を笑顔にしてくれた誰かの行動 😄", "今の仕事道具の中で、一番愛着があるもの 💻",
+            "もし明日から1週間の休みをもらえたら、何をする？ ✈️", "最近、一番「頑張ってよかった」と思ったこと 💮",
+            "自分が思う、今のチームの「好きなところ」 🤝", "最近、気になっている新しい趣味や習い事 🎨",
+            "もし空を飛べたら、一番最初に見たい景色はどこ？ 🕊️", "自分が一番元気になれる「最強の食べ物」は？ 🍖",
+            "最近、解決した小さな悩み事や困り事 🧩", "10年後の自分へ、今の自分からメッセージを送るなら？ ✉️",
+            "最近、一番感動した映画や動画のワンシーン 🎬", "今日、この朝会が終わった後の楽しみな予定は？ 🍰"
         ];
 
         window.generateTopic = () => {
-            const display = document.getElementById('topicDisplay');
-            display.classList.remove('fade-in');
-            void display.offsetWidth;
-            const randomTopic = topics[Math.floor(Math.random() * topics.length)];
-            display.innerText = randomTopic;
-            display.classList.add('fade-in');
+            if (isTopicSpinning) return;
+            isTopicSpinning = true;
+
+            const rouletteArea = document.getElementById('topicRouletteArea');
+            const resultsContainer = document.getElementById('topicResults');
+            const instruction = document.getElementById('topicInstruction');
+            const slots = document.querySelectorAll('.topic-slot');
+            const topicBtn = document.getElementById('topicBtn');
+            
+            // UIリセット
+            resultsContainer.classList.add('hidden');
+            instruction.classList.remove('hidden');
+            instruction.innerText = "シャッフル中...";
+            rouletteArea.classList.remove('hidden');
+            topicBtn.disabled = true;
+
+            let elapsed = 0;
+            const duration = 1800;
+            const interval = 80;
+
+            const timer = setInterval(() => {
+                elapsed += interval;
+                
+                slots.forEach(slot => {
+                    const rand = topics[Math.floor(Math.random() * topics.length)];
+                    slot.innerText = rand;
+                    slot.classList.add('roulette-active');
+                });
+
+                if (elapsed >= duration) {
+                    clearInterval(timer);
+                    stopTopicRoulette();
+                }
+            }, interval);
         };
+
+        function stopTopicRoulette() {
+            const rouletteArea = document.getElementById('topicRouletteArea');
+            const resultsContainer = document.getElementById('topicResults');
+            const instruction = document.getElementById('topicInstruction');
+            const topicBtn = document.getElementById('topicBtn');
+            const slots = document.querySelectorAll('.topic-slot');
+
+            // 最終結果を3つ選ぶ
+            const shuffled = [...topics].sort(() => 0.5 - Math.random());
+            const finalTopics = shuffled.slice(0, 3);
+
+            rouletteArea.classList.add('hidden');
+            slots.forEach(s => s.classList.remove('roulette-active'));
+            
+            instruction.innerText = "1つ選んで話そう！";
+            resultsContainer.classList.remove('hidden');
+            resultsContainer.innerHTML = '';
+
+            finalTopics.forEach((topic) => {
+                const div = document.createElement('div');
+                div.className = 'topic-result-card w-full p-4 rounded-xl text-indigo-700 font-bold shadow-sm fade-in flex items-center justify-center min-h-[50px]';
+                div.innerText = topic;
+                resultsContainer.appendChild(div);
+            });
+
+            topicBtn.disabled = false;
+            isTopicSpinning = false;
+        }
 
         window.startRoulette = async () => {
             if (isSpinning || members.length < 2) return;
-
             isSpinning = true;
+            
             const spinBtn = document.getElementById('spinBtn');
             const speaker1El = document.getElementById('speaker1');
             const speaker2El = document.getElementById('speaker2');
@@ -333,9 +373,8 @@
                 elapsed += interval;
                 const tempIdx1 = Math.floor(Math.random() * members.length);
                 let tempIdx2 = Math.floor(Math.random() * members.length);
-                while(tempIdx2 === tempIdx1 && members.length > 1) {
-                    tempIdx2 = Math.floor(Math.random() * members.length);
-                }
+                while(tempIdx2 === tempIdx1 && members.length > 1) tempIdx2 = Math.floor(Math.random() * members.length);
+                
                 name1El.innerText = members[tempIdx1].name;
                 name2El.innerText = members[tempIdx2].name;
 
@@ -354,10 +393,7 @@
             }, interval);
         };
 
-        nameInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') window.addMember();
-        });
-
+        nameInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') window.addMember(); });
         init();
     </script>
 </body>
